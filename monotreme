@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 
 const [,, command, ...args] = process.argv;
 const verbose = process.argv.some(arg => arg === "--verbose");
+const json = process.argv.some(arg => arg === "--json");
 
 /**
  * @param {unknown} value
@@ -13,7 +14,7 @@ function debug(value) {
 	verbose && console.debug(JSON.stringify(value, undefined, 2));
 }
 
-debug({ command, args, verbose });
+debug({ command, args, verbose, json });
 
 if (!command) {
 	throw new Error('Missing command.');
@@ -51,5 +52,9 @@ function affected() {
 	}, /** @type {Set<string>} */ (new Set())).values());
 	debug({ affectedpackagedirs })
 
-	console.info(affectedpackagedirs.join('\n'));
+	if (json) {
+		console.info(JSON.stringify(affectedpackagedirs));
+	} else {
+		console.info(affectedpackagedirs.join('\n'));
+	}
 }
