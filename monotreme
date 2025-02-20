@@ -5,16 +5,10 @@ import { execSync } from "node:child_process";
 const [,, command, ...args] = process.argv;
 const verbose = process.argv.some(arg => arg === "--verbose");
 const json = process.argv.some(arg => arg === "--json");
+/** @type {string | null} */
+const ignore = process.argv.find((arg) => arg.startsWith("--ignore"))?.substring(9) ?? null;
 
-/**
- * @param {unknown} value
- * @return {string}
- */
-function debug(value) {
-	verbose && console.debug(JSON.stringify(value, undefined, 2));
-}
-
-debug({ command, args, verbose, json });
+debug({ command, verbose, json, ignore });
 
 if (!command) {
 	throw new Error('Missing command.');
@@ -25,11 +19,19 @@ if (!command) {
 }
 
 function affected() {
-	const ref = args[0] ?? 'HEAD~';
+	const ref = args.filter(arg => !arg.startsWith('--'))[0] ?? 'HEAD~';
 	debug({ ref });
 
 	/** @type {ReadonlyArray<string>} */
-	const packagedirs = execSync('find . -name package.json -not -path "*/node_modules/*" | xargs dirname')
+	const packagedirs = execSync(
+		[
+			"find .",
+			"-name package.json",
+			'-not -path "*/node_modules/*"',
+			ignore ? `-not -path "${ignore}"` : '',
+			"| xargs dirname",
+		].join(" ")
+	)
 		.toString()
 		.trim()
 		.replaceAll('./', '')
@@ -57,4 +59,12 @@ function affected() {
 	} else {
 		console.info(affectedpackagedirs.join('\n'));
 	}
+}
+
+/**
+ * @param {unknown} value
+ * @return {string}
+ */
+function debug(value) {
+	verbose && console.debug(JSON.stringify(value, undefined, 2));
 }
