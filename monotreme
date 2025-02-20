@@ -19,7 +19,7 @@ if (!command) {
 }
 
 function affected() {
-	const ref = args.filter(arg => !arg.startsWith('--'))[0] ?? 'HEAD~';
+	const ref = args.filter(arg => !arg.startsWith('--'))[0] ?? 'HEAD^1';
 	debug({ ref });
 
 	/** @type {ReadonlyArray<string>} */
