@@ -5,11 +5,28 @@ import { execSync } from "node:child_process";
 const [, , command, ...args] = process.argv;
 const verbose = process.argv.some((arg) => arg === "--verbose");
 const json = process.argv.some((arg) => arg === "--json");
-/** @type {string | null} */
-const ignore =
-	process.argv.find((arg) => arg.startsWith("--ignore"))?.substring(9) ?? null;
+/** @type {ReadonlyArray<string>} */
+const ignore = process.argv.reduce((acc, arg) => {
+	if (arg.startsWith("--ignore")) {
+		acc.push(arg.substring(9));
+	}
+	return acc;
+}, /** @type {Array<string>} */ ([]));
+const ignoreRootPackageJson = !process.argv.some(
+	(arg) => arg === "--no-ignore-root",
+);
+const ignoreMonotremePackageJson = !process.argv.some(
+	(arg) => arg === "--no-ignore-monotreme",
+);
 
-debug({ command, verbose, json, ignore });
+debug({
+	command,
+	verbose,
+	json,
+	ignore,
+	ignoreRootPackageJson,
+	ignoreMonotremePackageJson,
+});
 
 if (!command) {
 	throw new Error("Missing command.");
@@ -29,7 +46,9 @@ function affected() {
 			"find .",
 			"-name package.json",
 			'-not -path "*/node_modules/*"',
-			ignore ? `-not -path "${ignore}"` : "",
+			ignoreRootPackageJson ? '-not -path "./package.json"' : "",
+			ignoreMonotremePackageJson ? '-not -path "./monotreme/*"' : "",
+			...ignore.map((pattern) => `-not -path "${pattern}"`),
 			"| xargs dirname",
 		].join(" "),
 	)
