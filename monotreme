@@ -2,24 +2,25 @@
 
 import { execSync } from "node:child_process";
 
-const [,, command, ...args] = process.argv;
-const verbose = process.argv.some(arg => arg === "--verbose");
-const json = process.argv.some(arg => arg === "--json");
+const [, , command, ...args] = process.argv;
+const verbose = process.argv.some((arg) => arg === "--verbose");
+const json = process.argv.some((arg) => arg === "--json");
 /** @type {string | null} */
-const ignore = process.argv.find((arg) => arg.startsWith("--ignore"))?.substring(9) ?? null;
+const ignore =
+	process.argv.find((arg) => arg.startsWith("--ignore"))?.substring(9) ?? null;
 
 debug({ command, verbose, json, ignore });
 
 if (!command) {
-	throw new Error('Missing command.');
+	throw new Error("Missing command.");
 } else if (command === "affected") {
 	affected();
 } else {
-	throw new Error('Unknown command.');
+	throw new Error("Unknown command.");
 }
 
 function affected() {
-	const ref = args.filter(arg => !arg.startsWith('--'))[0] ?? 'HEAD^1';
+	const ref = args.filter((arg) => !arg.startsWith("--"))[0] ?? "HEAD^1";
 	debug({ ref });
 
 	/** @type {ReadonlyArray<string>} */
@@ -28,36 +29,42 @@ function affected() {
 			"find .",
 			"-name package.json",
 			'-not -path "*/node_modules/*"',
-			ignore ? `-not -path "${ignore}"` : '',
+			ignore ? `-not -path "${ignore}"` : "",
 			"| xargs dirname",
-		].join(" ")
+		].join(" "),
 	)
 		.toString()
 		.trim()
-		.replaceAll('./', '')
-		.split('\n');
+		.replaceAll("./", "")
+		.split("\n");
 	debug({ packagedirs });
 
 	/** @type {ReadonlyArray<string>} */
-	const affectedfiles = execSync(`git diff --name-only ${ref} -- ${packagedirs.join(' ')}`)
+	const affectedfiles = execSync(
+		`git diff --name-only ${ref} -- ${packagedirs.join(" ")}`,
+	)
 		.toString()
 		.trim()
-		.split('\n');
+		.split("\n");
 	debug({ affectedfiles });
 
 	/** @type {ReadonlyArray<string>} */
-	const affectedpackagedirs = Array.from(packagedirs.reduce((acc, dir) => {
-		if (affectedfiles.some(file => file.startsWith(dir))) {
-			acc.add(dir);
-		}
-		return acc;
-	}, /** @type {Set<string>} */ (new Set())).values());
-	debug({ affectedpackagedirs })
+	const affectedpackagedirs = Array.from(
+		packagedirs
+			.reduce((acc, dir) => {
+				if (affectedfiles.some((file) => file.startsWith(dir))) {
+					acc.add(dir);
+				}
+				return acc;
+			}, /** @type {Set<string>} */ (new Set()))
+			.values(),
+	);
+	debug({ affectedpackagedirs });
 
 	if (json) {
 		console.info(JSON.stringify(affectedpackagedirs));
 	} else {
-		console.info(affectedpackagedirs.join('\n'));
+		console.info(affectedpackagedirs.join("\n"));
 	}
 }
 
