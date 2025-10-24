@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-node --experimental-strip-types $(basename $0)/monotreme.ts $@
+NODE_NO_WARNINGS=1 node --experimental-strip-types $(basename $0)/monotreme.ts $@

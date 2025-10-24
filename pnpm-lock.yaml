@@ -11,6 +11,9 @@ importers:
       json5:
         specifier: ^2.2.3
         version: 2.2.3
+      pb.safe:
+        specifier: ^1.0.0
+        version: 1.0.0
     devDependencies:
       '@tsconfig/strictest':
         specifier: ^2.0.6
@@ -199,6 +202,9 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  pb.safe@1.0.0:
+    resolution: {integrity: sha512-K9JgXtnE2jQDhlcEZs3Emr+2mvCMrn2swbbzeGvDWWTUsilTXBMAyOQCIJSkkEj65NIxfLRBAjnF9sMlNX8Azg==}
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -323,6 +329,8 @@ snapshots:
       '@esbuild/win32-x64': 0.25.11
 
   json5@2.2.3: {}
+
+  pb.safe@1.0.0: {}
 
   typescript@5.9.3: {}
 

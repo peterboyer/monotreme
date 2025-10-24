@@ -4,6 +4,7 @@
 	"include": ["./monotreme.ts"],
 	"compilerOptions": {
 		"lib": ["es2023"],
-		"target": "esnext"
+		"target": "esnext",
+		"moduleResolution": "nodenext"
 	}
 }

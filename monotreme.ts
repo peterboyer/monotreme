@@ -1,12 +1,14 @@
 import { execSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import * as json5 from "json5";
+import json5 from "json5";
+import { safe } from "pb.safe";
 // import * as json5 from "./json5-2.2.3.min.js";
 
-const [, , command, ...args] = process.argv;
-const verbose = process.argv.some((arg) => arg === "--verbose");
+const [, , ...args] = process.argv;
+const ref = args.filter((arg) => !arg.startsWith("--"))[0] ?? "HEAD^1";
 const json = process.argv.some((arg) => arg === "--json");
+const verbose = process.argv.some((arg) => arg === "--verbose");
 const ignore: ReadonlyArray<string> = process.argv.reduce((acc, arg) => {
 	if (arg.startsWith("--ignore")) {
 		acc.push(arg.substring(9));
@@ -21,155 +23,147 @@ const ignoreMonotremePackageJson = !process.argv.some(
 );
 
 debug({
-	command,
-	verbose,
+	ref,
 	json,
+	verbose,
 	ignore,
 	ignoreRootPackageJson,
 	ignoreMonotremePackageJson,
 });
 
-if (!command) {
-	throw new Error("Missing command.");
-} else if (command === "affected") {
-	affected();
-} else {
-	throw new Error("Unknown command.");
-}
-
+affected();
 async function affected() {
-	const ref = args.filter((arg) => !arg.startsWith("--"))[0] ?? "HEAD^1";
-	debug({ ref });
+	type Project = {
+		name: string;
+		$files: Array<string>;
+		dependencies: Array<{
+			project: string;
+			file: string;
+			key: string;
+			value: string;
+		}>;
+	};
 
-	const packagedirs: ReadonlyArray<string> = execSync(
-		[
-			"find .",
-			"-name package.json",
-			'-not -path "*/node_modules/*"',
-			ignoreRootPackageJson ? '-not -path "./package.json"' : "",
-			ignoreMonotremePackageJson ? '-not -path "./monotreme/*"' : "",
-			...ignore.map((pattern) => `-not -path "${pattern}"`),
-			"| xargs dirname",
-		].join(" "),
-	)
-		.toString()
-		.trim()
-		.replaceAll("./", "")
-		.split("\n");
-	debug({ packagedirs });
+	const projects = new Map<string /* ProjectName */, Project>();
 
-	const affectedfiles: ReadonlyArray<string> = execSync(
-		`git diff --name-only ${ref} -- ${packagedirs.join(" ")}`,
-	)
-		.toString()
-		.trim()
-		.split("\n");
-	debug({ affectedfiles });
+	await new Promise((resolve) =>
+		resolve(
+			execSync(
+				[
+					"find .",
+					"-name package.json",
+					'-not -path "*/node_modules/*"',
+					ignoreRootPackageJson ? '-not -path "./package.json"' : "",
+					ignoreMonotremePackageJson ? '-not -path "./monotreme/*"' : "",
+					...ignore.map((pattern) => `-not -path "${pattern}"`),
+					"| xargs dirname",
+				].join(" "),
+			)
+				.toString()
+				.trim()
+				.replaceAll("./", "")
+				.split("\n")
+				.forEach(($project) => {
+					projects.set($project, {
+						name: $project,
+						$files: [],
+						dependencies: [],
+					});
+				}),
+		),
+	);
+
+	const $projects = Array.from(projects.keys());
+
+	await new Promise((resolve) =>
+		resolve(
+			execSync(`git diff --name-only ${ref} -- ${$projects.join(" ")}`)
+				.toString()
+				.trim()
+				.split("\n")
+				.forEach(($file) => {
+					const $project = $projects.find((project) =>
+						$file.startsWith(project),
+					);
+					if (!$project) {
+						return;
+					}
+					const project = projects.get($project);
+					if (!project) {
+						throw new Error("Unexpected undefined for project reference.");
+					}
+					project.$files.push($file.substring($project.length + 1));
+				}),
+		),
+	);
 
 	// Find all `tsconfig.json` files.
-	const tsconfigfiles = await Promise.all(
-		packagedirs.map((packagedir) => {
-			const filepath = join(packagedir, "./tsconfig.json");
-			return readFile(resolve(filepath), { encoding: "utf8" })
-				.then((content) => {
-					return {
-						packagedir,
-						filepath,
-						content: json5.parse(content),
-					};
-				})
-				.catch(() => undefined);
-		}),
-	);
-	console.log({ tsconfigfiles });
-
-	// project => dependents
-	const depgraph: Record<
-		string,
-		Array<{ project: string; file: string; key: string; value: string }>
-	> = {};
-	tsconfigfiles.forEach((tsconfigfile) => {
-		if (!tsconfigfile) {
-			return;
-		}
-
-		const aliases = (
-			tsconfigfile.content as {
-				compilerOptions?: {
-					paths?: Record<string, ReadonlyArray<string>>;
-				};
-			}
-		).compilerOptions?.paths;
-		if (!aliases) {
-			return;
-		}
-
-		Object.entries(aliases).forEach(([key, aliaspaths]) => {
-			aliaspaths.map((path, index) => {
-				packagedirs.forEach((packagedir) => {
-					const aliaspath = join(tsconfigfile.packagedir, path);
-					console.log("compare", packagedir, "vs", aliaspath);
-					if (aliaspath.startsWith(packagedir)) {
-						const deps = depgraph[packagedir] ?? [];
-						deps.push({
-							project: tsconfigfile.packagedir,
-							file: tsconfigfile.filepath,
-							key: `.compilerOptions.path["${key}"][index]`,
-							value: path,
-						});
-						depgraph[packagedir] = deps;
-					}
-				});
-			});
-		});
-	});
-	console.log("depgraph", depgraph);
-
-	const why: Record<
-		string,
-		Array<{ type: "file" | "path" | "dep"; source: string }>
-	> = {};
-
-	const scanfiles = new Set<string>([...affectedfiles]);
-	const affectedpackagedirs: ReadonlyArray<string> = Array.from(
-		packagedirs
-			.reduce((acc, dir) => {
-				for (const file of scanfiles) {
-					if (file.startsWith(dir)) {
-						acc.add(dir);
-
-						scanfiles.delete(file);
-						const arr = why[dir] ?? [];
-						arr.push({ type: "git.diff", source: file });
-						why[dir] = arr;
-					}
+	const promises: Array<Promise<void>> = [];
+	projects.forEach((project, $project) => {
+		promises.push(
+			(async () => {
+				const $file = join($project, "./tsconfig.json");
+				const file = await safe(() =>
+					readFile(resolve($file), { encoding: "utf8" }),
+				);
+				if (file instanceof Error) {
+					return;
 				}
 
-				return acc;
-			}, new Set<string>())
-			.values(),
-	);
+				const object = json5.parse(file) as unknown as {
+					compilerOptions?: {
+						paths?: Record<string, ReadonlyArray<string>>;
+					};
+				};
 
-	Object.keys(why).forEach((project) => {
-		const deps = depgraph[project];
-		if (!deps) {
-			return;
-		}
-		for (const dep of deps) {
-			const arr = why[dep.project] ?? [];
-			arr.push({ type: "js.tsconfig.path", ...dep });
-			why[dep.project] = arr;
-		}
+				const paths = object.compilerOptions?.paths;
+				if (!paths) {
+					return;
+				}
+
+				Object.entries(paths).forEach(([key, $files]) => {
+					$files.forEach(($file, index) => {
+						const path = join($project, $file);
+						projects.forEach((_project, _$project) => {
+							if (_$project !== $project && path.startsWith(_$project)) {
+								project.dependencies.push({
+									project: _$project,
+									file: "tsconfig.json",
+									key: `.compilerOptions.path["${key}"][${index}]`,
+									value: `"${path}"`,
+								});
+							}
+						});
+					});
+				});
+			})(),
+		);
 	});
-
-	debug({ affectedpackagedirs });
-
-	debug({ why });
+	await Promise.all(promises);
 
 	if (json) {
-		console.info(JSON.stringify(affectedpackagedirs));
+		return void console.info(JSON.stringify(affected));
+	}
+
+	if (!projects.size) {
+		console.info("No projects found.");
 	} else {
-		console.info(affectedpackagedirs.join("\n"));
+		projects.forEach((project, $project) => {
+			console.info("");
+			console.log($project);
+			if (project.$files.length) {
+				console.log("  files:");
+				project.$files.forEach(($file) => {
+					console.log("    - " + $file);
+				});
+			}
+			if (project.dependencies.length) {
+				console.log("  dependencies:");
+				project.dependencies.forEach(({ project, file, key, value }) => {
+					console.log(`    - ${project} ${file} ${key} = ${value}`);
+				});
+			}
+		});
 	}
 }
 

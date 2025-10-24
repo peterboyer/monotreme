@@ -1,7 +1,8 @@
 {
 	"type": "module",
 	"dependencies": {
-		"json5": "^2.2.3"
+		"json5": "^2.2.3",
+		"pb.safe": "^1.0.0"
 	},
 	"devDependencies": {
 		"@tsconfig/strictest": "^2.0.6",
