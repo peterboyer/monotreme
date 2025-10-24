@@ -35,7 +35,7 @@ affected();
 async function affected() {
 	type Project = {
 		name: string;
-		$files: Array<string>;
+		files: Array<string>;
 		dependencies: Array<{
 			project: string;
 			file: string;
@@ -66,7 +66,7 @@ async function affected() {
 				.forEach(($project) => {
 					projects.set($project, {
 						name: $project,
-						$files: [],
+						files: [],
 						dependencies: [],
 					});
 				}),
@@ -81,9 +81,9 @@ async function affected() {
 				.toString()
 				.trim()
 				.split("\n")
-				.forEach(($file) => {
+				.forEach((file) => {
 					const $project = $projects.find((project) =>
-						$file.startsWith(project),
+						file.startsWith(project),
 					);
 					if (!$project) {
 						return;
@@ -92,7 +92,7 @@ async function affected() {
 					if (!project) {
 						throw new Error("Unexpected undefined for project reference.");
 					}
-					project.$files.push($file.substring($project.length + 1));
+					project.files.push(file.substring($project.length + 1));
 				}),
 		),
 	);
@@ -102,15 +102,15 @@ async function affected() {
 	projects.forEach((project, $project) => {
 		promises.push(
 			(async () => {
-				const $file = join($project, "./tsconfig.json");
-				const file = await safe(() =>
-					readFile(resolve($file), { encoding: "utf8" }),
+				const file = join($project, "./tsconfig.json");
+				const json = await safe(() =>
+					readFile(resolve(file), { encoding: "utf8" }),
 				);
-				if (file instanceof Error) {
+				if (json instanceof Error) {
 					return;
 				}
 
-				const object = json5.parse(file) as unknown as {
+				const object = json5.parse(json) as unknown as {
 					compilerOptions?: {
 						paths?: Record<string, ReadonlyArray<string>>;
 					};
@@ -121,9 +121,9 @@ async function affected() {
 					return;
 				}
 
-				Object.entries(paths).forEach(([key, $files]) => {
-					$files.forEach(($file, index) => {
-						const path = join($project, $file);
+				Object.entries(paths).forEach(([key, files]) => {
+					files.forEach((file, index) => {
+						const path = join($project, file);
 						projects.forEach((_project, _$project) => {
 							if (_$project !== $project && path.startsWith(_$project)) {
 								project.dependencies.push({
@@ -141,8 +141,10 @@ async function affected() {
 	});
 	await Promise.all(promises);
 
+	console.log(projects.forEach((project) => console.log(project)));
+
 	if (json) {
-		return void console.info(JSON.stringify(affected));
+		return void console.info(JSON.stringify(["<todo>"]));
 	}
 
 	if (!projects.size) {
@@ -151,10 +153,10 @@ async function affected() {
 		projects.forEach((project, $project) => {
 			console.info("");
 			console.log($project);
-			if (project.$files.length) {
+			if (project.files.length) {
 				console.log("  files:");
-				project.$files.forEach(($file) => {
-					console.log("    - " + $file);
+				project.files.forEach((file) => {
+					console.log("    - " + file);
 				});
 			}
 			if (project.dependencies.length) {
