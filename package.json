@@ -1,3 +1,15 @@
 {
-  "type": "module"
+	"type": "module",
+	"dependencies": {
+		"json5": "^2.2.3"
+	},
+	"devDependencies": {
+		"@tsconfig/strictest": "^2.0.6",
+		"@types/node": "^24.9.1",
+		"esbuild": "^0.25.11",
+		"typescript": "^5.9.3"
+	},
+	"prettier": {
+		"useTabs": true
+	}
 }

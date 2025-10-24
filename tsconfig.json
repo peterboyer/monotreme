@@ -1,0 +1,9 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig.json",
+	"extends": ["./node_modules/@tsconfig/strictest/tsconfig.json"],
+	"include": ["./monotreme.ts"],
+	"compilerOptions": {
+		"lib": ["es2023"],
+		"target": "esnext"
+	}
+}
