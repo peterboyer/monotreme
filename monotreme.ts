@@ -1,10 +1,36 @@
 import { execSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import json5 from "json5";
 import { safe } from "pb.safe";
 
-const [, , ...args] = process.argv;
+const [, name, ...args] = process.argv;
+const help = process.argv.some((arg) => arg === "--help");
+
+if (help) {
+	console.info(`Usage: ${basename(name!).split(".")[0]} [REF] [OPTION]...
+Determine affected monorepo projects from git diff.
+
+A "project" is any directory containing a "package.json". Use --verbose to help
+trace/debug detected projects, affected files, and subsequently affected projects.
+
+With no REF, defaults to comparing against last commit (i.e. HEAD^1).
+
+  --json                display affected projects as json stringified array
+  --verbose             display all projects and trace/debug dependencies analysis
+  --ignore=PATTERN      exclude matching paths to projects from analysis
+  --no-ignore-root      include the monorepo's root package.json if it exists
+  --no-ignore-monotreme include the monotreme submodule as a project
+
+Copyright (c) 2025 Peter Boyer * MIT License * Made in Sydney, Australia.
+Report issues or file feature requests: https://github.com/peterboyer/monotreme.
+
+| [Monotremes] are the only group of living mammals that lay eggs, rather than
+| bearing live young. The only extant monotreme species are the platypus and
+| the four species of echidnas. (https://en.wikipedia.org/wiki/Monotreme)`);
+	process.exit();
+}
+
 const ref = args.filter((arg) => !arg.startsWith("--"))[0] ?? "HEAD^1";
 const json = process.argv.some((arg) => arg === "--json");
 const verbose = process.argv.some((arg) => arg === "--verbose");
