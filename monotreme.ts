@@ -244,6 +244,8 @@ async function main() {
 	if (json) {
 		console.info(JSON.stringify(affected));
 	} else {
-		console.info(affected.join("\n"));
+		if (affected.length) {
+			console.info(affected.join("\n"));
+		}
 	}
 }
