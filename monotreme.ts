@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import json5 from "json5";
 import { safe } from "pb.safe";
-// import * as json5 from "./json5-2.2.3.min.js";
 
 const [, , ...args] = process.argv;
 const ref = args.filter((arg) => !arg.startsWith("--"))[0] ?? "HEAD^1";
@@ -22,26 +21,29 @@ const ignoreMonotremePackageJson = !process.argv.some(
 	(arg) => arg === "--no-ignore-monotreme",
 );
 
-debug({
-	ref,
-	json,
-	verbose,
-	ignore,
-	ignoreRootPackageJson,
-	ignoreMonotremePackageJson,
-});
+if (verbose) {
+	console.info({
+		ref,
+		json,
+		verbose,
+		ignore,
+		ignoreRootPackageJson,
+		ignoreMonotremePackageJson,
+	});
+}
 
-affected();
-async function affected() {
+main();
+async function main() {
 	type Project = {
 		name: string;
 		files: Array<string>;
-		dependencies: Array<{
-			project: string;
+		dependents: Array<{
+			project: Project;
 			file: string;
 			key: string;
 			value: string;
 		}>;
+		dependencies: Array<string>;
 	};
 
 	const projects = new Map<string /* ProjectName */, Project>();
@@ -67,6 +69,7 @@ async function affected() {
 					projects.set($project, {
 						name: $project,
 						files: [],
+						dependents: [],
 						dependencies: [],
 					});
 				}),
@@ -82,8 +85,8 @@ async function affected() {
 				.trim()
 				.split("\n")
 				.forEach((file) => {
-					const $project = $projects.find((project) =>
-						file.startsWith(project),
+					const $project = $projects.find(($project) =>
+						file.startsWith($project),
 					);
 					if (!$project) {
 						return;
@@ -126,11 +129,11 @@ async function affected() {
 						const path = join($project, file);
 						projects.forEach((_project, _$project) => {
 							if (_$project !== $project && path.startsWith(_$project)) {
-								project.dependencies.push({
-									project: _$project,
+								_project.dependents.push({
+									project,
 									file: "tsconfig.json",
 									key: `.compilerOptions.path["${key}"][${index}]`,
-									value: `"${path}"`,
+									value: `"${file}" => ${path}`,
 								});
 							}
 						});
@@ -141,34 +144,64 @@ async function affected() {
 	});
 	await Promise.all(promises);
 
-	console.log(projects.forEach((project) => console.log(project)));
+	function walk(project: Project, path: ReadonlyArray<string>) {
+		if (project.dependents.length) {
+			project.dependents.forEach((dependent) => {
+				dependent.project.dependencies.push(
+					Array.from(path).reverse().join(" -> "),
+				);
+				walk(dependent.project, [...path, dependent.project.name]);
+			});
+		}
+	}
+	projects.forEach((project) => {
+		if (project.files.length) {
+			project.files.forEach((file) => {
+				project.dependencies.push(file);
+			});
+			walk(project, [project.name]);
+		}
+	});
+
+	// >> Development.
+	// projects.forEach((project) =>
+	//   console.log({
+	//     ...project,
+	//     dependents: project.dependents.map((dependent) => ({
+	//       ...dependent,
+	//       project: `~${dependent.project.name}`,
+	//     })),
+	//   }),
+	// );
+	// <<
+
+	if (verbose) {
+		if (!projects.size) {
+			console.info("No projects found.");
+		} else {
+			projects.forEach((project, $project) => {
+				console.info("");
+				console.info(
+					$project + (project.dependencies.length ? " [affected]" : ""),
+				);
+				if (project.dependencies.length) {
+					console.info("  dependencies:");
+					project.dependencies.forEach((affect) => {
+						console.info(`    - ${affect}`);
+					});
+				}
+			});
+		}
+		console.info("");
+	}
+
+	const affected = Array.from(projects.values())
+		.filter((project) => project.dependencies.length)
+		.map((project) => project.name);
 
 	if (json) {
-		return void console.info(JSON.stringify(["<todo>"]));
-	}
-
-	if (!projects.size) {
-		console.info("No projects found.");
+		console.info(JSON.stringify(affected));
 	} else {
-		projects.forEach((project, $project) => {
-			console.info("");
-			console.log($project);
-			if (project.files.length) {
-				console.log("  files:");
-				project.files.forEach((file) => {
-					console.log("    - " + file);
-				});
-			}
-			if (project.dependencies.length) {
-				console.log("  dependencies:");
-				project.dependencies.forEach(({ project, file, key, value }) => {
-					console.log(`    - ${project} ${file} ${key} = ${value}`);
-				});
-			}
-		});
+		console.info(affected.join("\n"));
 	}
-}
-
-function debug(value: unknown) {
-	verbose && console.debug(JSON.stringify(value, undefined, 2));
 }
