@@ -39,11 +39,28 @@ async function main() {
 		files: Array<string>;
 		dependents: Array<{
 			project: Project;
-			file: string;
-			key: string;
-			value: string;
+			trace: ReadonlyArray<string | number>;
 		}>;
-		dependencies: Array<string>;
+		dependencies: Array<
+			| {
+					type: "file";
+					/**
+					 * Path to affected file.
+					 */
+					path: string;
+			  }
+			| {
+					type: "dependency";
+					/**
+					 * Path to affected project.
+					 */
+					path: ReadonlyArray<string>;
+					/**
+					 * Trace that determined the dependency.
+					 */
+					trace: ReadonlyArray<string | number>;
+			  }
+		>;
 	};
 
 	const projects = new Map<string /* ProjectName */, Project>();
@@ -131,9 +148,15 @@ async function main() {
 							if (_$project !== $project && path.startsWith(_$project)) {
 								_project.dependents.push({
 									project,
-									file: "tsconfig.json",
-									key: `.compilerOptions.path["${key}"][${index}]`,
-									value: `"${file}" => ${path}`,
+									trace: [
+										"tsconfig.json",
+										"compilerOptions",
+										"path",
+										key,
+										index,
+										file,
+										path,
+									],
 								});
 							}
 						});
@@ -144,24 +167,29 @@ async function main() {
 	});
 	await Promise.all(promises);
 
-	function walk(project: Project, path: ReadonlyArray<string>) {
-		if (project.dependents.length) {
-			project.dependents.forEach((dependent) => {
-				dependent.project.dependencies.push(
-					Array.from(path).reverse().join(" -> "),
-				);
-				walk(dependent.project, [...path, dependent.project.name]);
-			});
-		}
-	}
 	projects.forEach((project) => {
 		if (project.files.length) {
 			project.files.forEach((file) => {
-				project.dependencies.push(file);
+				project.dependencies.push({
+					type: "file",
+					path: file,
+				});
 			});
 			walk(project, [project.name]);
 		}
 	});
+	function walk(project: Project, path: ReadonlyArray<string>) {
+		if (project.dependents.length) {
+			project.dependents.forEach((dependent) => {
+				dependent.project.dependencies.push({
+					type: "dependency",
+					path: Array.from(path).reverse(),
+					trace: dependent.trace,
+				});
+				walk(dependent.project, [...path, dependent.project.name]);
+			});
+		}
+	}
 
 	// >> Development.
 	// projects.forEach((project) =>
@@ -185,10 +213,24 @@ async function main() {
 					$project + (project.dependencies.length ? " [affected]" : ""),
 				);
 				if (project.dependencies.length) {
-					console.info("  dependencies:");
-					project.dependencies.forEach((affect) => {
-						console.info(`    - ${affect}`);
-					});
+					Array.from(project.dependencies)
+						.sort(
+							(a, b) =>
+								(b.type === "file" ? 1 : 0) - (a.type === "file" ? 1 : 0),
+						)
+						.forEach((dependency) => {
+							switch (dependency.type) {
+								case "file": {
+									console.info(`  * ${dependency.path}`);
+									break;
+								}
+								case "dependency": {
+									console.info(`  @ ${dependency.path.join(" -> ")}`);
+									console.info(`    | ${dependency.trace.join(" -> ")}`);
+									break;
+								}
+							}
+						});
 				}
 			});
 		}
